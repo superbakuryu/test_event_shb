@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <!-- Required meta tags -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <title>SHB</title>
+  <link rel="stylesheet" href="/static/vendors/mdi/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="/static/vendors/css/vendor.bundle.base.css">
+  <link rel="stylesheet" href="/static/css/jquery.loadingModal.min.css">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+  <div class="container-scroller">
+    <div class="container-fluid page-body-wrapper full-page-wrapper">
+      <div class="content-wrapper d-flex align-items-center auth">
+        <div class="row flex-grow">
+          <div class="col-lg-4 mx-auto">
+            <div class="auth-form-light text-left p-5">
+              <form class="pt-3" action="/test_event_shb" method="POST" id="test_event">
+                <div class="form-group">
+                  <input type="text" class="form-control form-control-lg" name="customer_name" id="customer_name"
+                    placeholder="Họ tên khách hàng" required>
+                </div>
+
+                <div class="form-group">
+                  <input type="number" class="form-control form-control-lg" name="customer_phone" id="customer_phone"
+                    placeholder="Số điện thoại của khách hàng" required>
+                </div>
+
+                <div class="form-group">
+                  <select class="form-control form-control-lg" name="customer_gender" id="exampleFormControlSelect2">
+                    <option value="anh chị">-- Giới tính --</option>
+                    <option value="anh">Nam</option>
+                    <option value="chị">Nữ</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <input type="number" class="form-control form-control-lg" name="customer_cmnd" id="customer_cmnd"
+                    placeholder="Số CMND của khách hàng" required>
+                </div>
+
+                <div class="form-group">
+                  <input type="number" class="form-control form-control-lg" name="account_number" id="account_number"
+                    placeholder="Số tài khoản mà KH chuyển tiền tới" required>
+                </div>
+
+                <div class="form-group">
+                  <input type="number" class="form-control form-control-lg" name="sum_of_money" id="sum_of_money"
+                    placeholder="Số tiền KH đã chuyển" required>
+                </div>
+                {% if error %}
+                <div class="card-body">
+                  {{ error }}
+                </div>
+                {% endif %}
+                <div class="mt-3">
+                  <a href="#" id="calling"
+                    class="btn btn-block btn-gradient-primary btn-lg font-weight-medium auth-form-btn">Gọi</a>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/vendors/js/vendor.bundle.base.js"></script>
+  <script src="/static/js/off-canvas.js"></script>
+  <script src="/static/js/hoverable-collapse.js"></script>
+  <script src="/static/js/misc.js"></script>
+  <script src="//code.jquery.com/jquery-3.1.1.slim.min.js"></script>
+  <script src="/static/landing_page/assets/libs/jquery/dist/jquery.min.js"></script>
+  <script src="/static/js/jquery.loadingModal.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <script>
+    $(document).ready(function () {
+      $('body').loadingModal('destroy');
+      $("#calling").click(function () {
+        $('body').loadingModal({
+
+          text: 'Đang kết nối cuộc gọi...'
+        });
+        $.ajax({
+          url: "/test_event_shb",
+          type: "POST",
+          data: $("#test_event").serialize(),
+          success: function (_data) {
+            var api_data = JSON.parse(_data);
+            var result = api_data['result'];
+            if (result == false) {
+              $('body').loadingModal('destroy');
+              var error = api_data['error']
+              Swal.fire(
+                'Thất bại',
+                error,
+                'error'
+              )
+            } else {
+              var code = api_data['code'];
+              if (code != '200') {
+                $('body').loadingModal('destroy');
+                Swal.fire(
+                  'Thất bại',
+                  'Vui lòng kiểm tra lại hệ thống',
+                  'error'
+                )
+              } else {
+                $('body').loadingModal('destroy');
+
+                $('body').loadingModal({
+
+                  text: 'Đang thực hiện cuộc gọi...'
+                });
+                var conversation_id = api_data['conversation_id'];
+                var source = new EventSource("{{ url_for('sse.stream') }}");
+                source.addEventListener(conversation_id, function (event) {
+                  var data = JSON.parse(event.data);
+                  if (data.call_status == 100 || data.call_status == 101) {
+                    if (data.bot_report.status == 'success') {
+                      Swal.fire(
+                        'Thành công',
+                        'Số điện thoại: '+ data.bot_report.customer_phone,
+                        'success'
+                      )
+                      $('body').loadingModal('destroy');
+                      source.close();
+                    }
+                    else if ( data.bot_report.status == 'fail' ){
+                      Swal.fire(
+                        'Thất bại',
+                        'Số điện thoại: '+ data.bot_report.customer_phone,
+                        'error'
+                      )
+                      $('body').loadingModal('destroy');
+                      source.close();
+                    }
+                    else{
+                      Swal.fire(
+                        'Chuyển tổng đài viên',
+                        'Số điện thoại: '+ data.bot_report.customer_phone,
+                        'success'
+                      )
+                      $('body').loadingModal('destroy');
+                      source.close();
+                    }
+                  }
+                  else {
+                    if (data.call_status == 103) {
+                      detail = 'không nghe máy';
+                    }
+                    else if (data.call_status == 104) {
+                      detail = 'không liên lạc được';
+                    }
+                    else if (data.call_status == 105) {
+                      detail = 'lỗi';
+                    }
+                    else if (data.call_status == 106) {
+                      detail = 'Agent call forward';
+                    }
+                    else if (data.call_status == 203) {
+                      detail = 'Khách hàng không nghe';
+                    }
+                    else if (data.call_status == 204) {
+                      detail = 'không liên lạc dc khách hàng';
+                    }
+                    else if (data.call_status == 206) {
+                      detail = 'Khách hàng đặt call forward';
+                    }
+                    else if (data.call_status == 300) {
+                      detail = 'Không đủ tiền';
+                    }
+                    else {
+                      detail = '';
+                    }
+
+                    Swal.fire(
+                      'Thất bại',
+                      detail,
+                      'error'
+                    )
+                    $('body').loadingModal('destroy');
+                    source.close();
+                  }
+
+                }, false);
+              }
+            }
+
+
+
+
+
+
+
+          }
+        });
+
+
+      });
+    });
+
+
+  </script>
+</body>
+
+</html>
